@@ -1,0 +1,16 @@
+{
+  "source": "assets/source/oracle.jpg",
+  "mode": "heuristic",
+  "crop": [
+    0.18,
+    0.1,
+    0.82,
+    0.92
+  ],
+  "sample_size": 640,
+  "max_points": 52000,
+  "point_count": 52000,
+  "depth_min": 0.0,
+  "depth_max": 1.0,
+  "note": "heuristic luminance/color/edge depth"
+}

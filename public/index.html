@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Depth Anything Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+
+    <header class="panel panel-top">
+      <div>
+        <p class="eyebrow">Depth Anything Lab</p>
+        <h1>Image to spatial asset.</h1>
+      </div>
+      <div class="status" id="status">loading asset</div>
+    </header>
+
+    <aside class="panel controls" aria-label="Depth controls">
+      <label>
+        <span>Depth</span>
+        <input id="depthScale" type="range" min="0" max="5" value="2.2" step="0.05" />
+      </label>
+      <label>
+        <span>Particle Size</span>
+        <input id="pointSize" type="range" min="0.35" max="2.5" value="1.05" step="0.05" />
+      </label>
+      <label>
+        <span>Scatter</span>
+        <input id="scatter" type="range" min="0" max="2.8" value="0.25" step="0.05" />
+      </label>
+      <label>
+        <span>Depth Tint</span>
+        <input id="depthTint" type="range" min="0" max="1" value="0.18" step="0.01" />
+      </label>
+      <div class="buttons">
+        <button id="resetView" type="button">Reset View</button>
+        <button id="toggleSpin" type="button">Spin</button>
+      </div>
+    </aside>
+
+    <section class="panel readout" id="readout">
+      <p>asset: <strong id="assetName">oracle</strong></p>
+      <p>mode: <strong id="modeName">unknown</strong></p>
+      <p>points: <strong id="pointCount">0</strong></p>
+      <p>drag to orbit, wheel to zoom</p>
+    </section>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
