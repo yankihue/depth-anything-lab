@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8061 --directory public",
-    "build:oracle": "python3 tools/build_depth_asset.py --input assets/source/oracle.jpg --out public/data/oracle --crop 0.18,0.10,0.82,0.92 --max-points 52000 --mode auto",
-    "build:heuristic": "python3 tools/build_depth_asset.py --input assets/source/oracle.jpg --out public/data/oracle --crop 0.18,0.10,0.82,0.92 --max-points 52000 --mode heuristic"
+    "build:sample": "python3 tools/build_depth_asset.py --input assets/source/oracle.jpg --out public/data/oracle --crop 0.18,0.10,0.82,0.92 --max-points 52000 --mask-mode oracle --mode auto",
+    "build:oracle": "npm run build:sample",
+    "build:heuristic": "python3 tools/build_depth_asset.py --input assets/source/oracle.jpg --out public/data/oracle --crop 0.18,0.10,0.82,0.92 --max-points 52000 --mask-mode oracle --mode heuristic"
   }
 }

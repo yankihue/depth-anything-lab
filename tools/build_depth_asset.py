@@ -26,6 +26,7 @@ from PIL import Image, ImageFilter
 class BuildMeta:
     source: str
     mode: str
+    mask_mode: str
     crop: Tuple[float, float, float, float]
     sample_size: int
     max_points: int
@@ -178,8 +179,20 @@ def rgb_to_hsv(r: float, g: float, b: float) -> Tuple[float, float, float]:
     return h, s, mx
 
 
-def candidate_weight(r: float, g: float, b: float) -> float:
+def candidate_weight(r: float, g: float, b: float, depth_value: float, mask_mode: str) -> float:
     h, s, v = rgb_to_hsv(r, g, b)
+    if mask_mode == "none":
+        return 1.0
+    if mask_mode == "luma":
+        if v < 0.035 or v > 0.985:
+            return 0.0
+        return 0.28 + s * 0.85 + (1.0 - abs(v - 0.5) * 2.0) * 0.22
+    if mask_mode == "depth":
+        if v < 0.025:
+            return 0.0
+        contrast = abs(depth_value - 0.5) * 2.0
+        return 0.22 + contrast * 1.2 + s * 0.32
+
     weight = 0.0
     if (h < 30 or h > 330) and s > 0.35 and 0.18 < v < 0.82:
         weight += 1.0
@@ -202,6 +215,7 @@ def build_points(
     crop: Tuple[float, float, float, float],
     max_points: int,
     seed: int,
+    mask_mode: str,
 ) -> dict:
     rng = random.Random(seed)
     h, w, _ = rgb.shape
@@ -217,7 +231,7 @@ def build_points(
     for y in range(y0, y1):
         for x in range(x0, x1):
             r, g, b = [float(v) / 255.0 for v in rgb[y, x]]
-            weight = candidate_weight(r, g, b)
+            weight = candidate_weight(r, g, b, float(depth[y, x]), mask_mode)
             if weight > 0.05:
                 candidates.append((x, y, r, g, b, float(depth[y, x]), weight))
 
@@ -284,6 +298,12 @@ def main() -> int:
     parser.add_argument("--max-points", type=int, default=52000)
     parser.add_argument("--seed", type=int, default=4107)
     parser.add_argument("--mode", choices=["auto", "heuristic", "da-v2"], default="auto")
+    parser.add_argument(
+        "--mask-mode",
+        choices=["oracle", "depth", "luma", "none"],
+        default="depth",
+        help="pixel-selection strategy before point-cloud export",
+    )
     parser.add_argument("--model-dir", default=os.environ.get("DEPTH_ANYTHING_V2_DIR"))
     parser.add_argument("--checkpoint", default=os.environ.get("DEPTH_ANYTHING_V2_CHECKPOINT"))
     parser.add_argument("--encoder", choices=sorted(MODEL_CONFIGS), default=os.environ.get("DEPTH_ANYTHING_V2_ENCODER", "vits"))
@@ -307,9 +327,10 @@ def main() -> int:
         depth_img = depth_img.resize((args.sample_size, args.sample_size), Image.Resampling.BICUBIC)
         depth = np.asarray(depth_img, dtype=np.float32) / 255.0
 
-    points = build_points(rgb, depth, args.crop, args.max_points, args.seed)
+    points = build_points(rgb, depth, args.crop, args.max_points, args.seed, args.mask_mode)
     point_count = len(points["sizes"])
     points["mode"] = mode
+    points["maskMode"] = args.mask_mode
 
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     with open(out_prefix.with_name(out_prefix.name + "-points.json"), "w", encoding="utf-8") as fh:
@@ -321,6 +342,7 @@ def main() -> int:
     meta = BuildMeta(
         source=str(image_path),
         mode=mode,
+        mask_mode=args.mask_mode,
         crop=args.crop,
         sample_size=args.sample_size,
         max_points=args.max_points,

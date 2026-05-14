@@ -1,6 +1,7 @@
 {
   "source": "assets/source/oracle.jpg",
   "mode": "heuristic",
+  "mask_mode": "oracle",
   "crop": [
     0.18,
     0.1,

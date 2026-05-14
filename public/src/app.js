@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
-const DATASET = "oracle";
+const params = new URLSearchParams(window.location.search);
+const DATASET = (params.get("asset") || "oracle").replace(/[^a-z0-9_-]/gi, "");
 const DATA_URL = `./data/${DATASET}-points.json`;
 const META_URL = `./data/${DATASET}.meta.json`;
 
@@ -8,6 +9,8 @@ const canvas = document.getElementById("stage");
 const statusEl = document.getElementById("status");
 const modeName = document.getElementById("modeName");
 const pointCount = document.getElementById("pointCount");
+const assetName = document.getElementById("assetName");
+assetName.textContent = DATASET;
 
 const controls = {
   depthScale: document.getElementById("depthScale"),
@@ -229,6 +232,6 @@ function tick() {
 
 loadAsset().catch((error) => {
   console.error(error);
-  setStatus("missing asset: run npm run build:oracle");
+  setStatus(`missing asset: build public/data/${DATASET}-points.json`);
 });
 tick();
