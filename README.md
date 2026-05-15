@@ -1,118 +1,83 @@
-# Depth Anything Lab
+# depth-anything-lab
 
-Agent-friendly tools for turning ordinary images into browser-ready depth assets.
+Turn a single image into a depth map and a point-cloud JSON you can drop into a Three.js scene.
 
-This repo is intentionally small: a Python asset builder, a static Three.js viewer, and documentation that makes it easy for coding agents to generate, inspect, and reuse 2.5D/3D image assets in other projects.
+Two pieces:
 
-The bundled sample comes from the oracle image used in [hue-slash](https://hue-slash.vercel.app/), but the lab is general. Bring any image, build a depth-backed point payload, preview it locally, then copy the generated files into a website, game, installation, or visual experiment.
+- `tools/build_depth_asset.py` — Python CLI. Input: one image. Output: four files in `public/data/`.
+- `public/` — a static Three.js viewer (importmap + CDN, no bundler) for eyeballing what the CLI produced.
 
-## What It Produces
+The viewer is for inspection. It is not a production renderer. The point payload is what you ship.
 
-For an input image, the builder writes:
-
-- `public/data/<asset>-points.json`: compact point-cloud payload for WebGL.
-- `public/data/<asset>-depth.png`: normalized grayscale depth map.
-- `public/data/<asset>-source.jpg`: resized source preview used for inspection.
-- `public/data/<asset>.meta.json`: generation settings, mode, crop, and provenance.
-
-The point payload is designed to be easy for agents to consume in Three.js, custom shaders, canvas renderers, or conversion scripts.
-
-## Fast Start
+## Quick check
 
 ```bash
-npm run build:sample
-npm run serve
+npm run build:sample   # builds the bundled oracle.jpg sample
+npm run serve          # python3 -m http.server 8061 --directory public
 ```
 
-Open [http://localhost:8061](http://localhost:8061).
+Open `http://localhost:8061/`. To inspect a different asset: `?asset=<name>`.
 
-The viewer defaults to `oracle`. To inspect another generated asset:
-
-```text
-http://localhost:8061/?asset=my-asset
-```
-
-## Build Your Own Asset
-
-Put an image anywhere, then run:
+## Build an asset
 
 ```bash
 python3 tools/build_depth_asset.py \
-  --input /path/to/image.jpg \
+  --input /abs/path/to/image.jpg \
   --out public/data/my-asset \
-  --crop 0,0,1,1 \
-  --max-points 42000 \
   --mask-mode depth \
   --mode auto
 ```
 
-Then preview:
+Writes:
 
-```bash
-npm run serve
+```
+public/data/my-asset-points.json   # the payload you actually use
+public/data/my-asset-depth.png     # normalized grayscale depth, for inspection
+public/data/my-asset-source.jpg    # resized + letterboxed source, for inspection
+public/data/my-asset.meta.json     # crop, mode, point count, depth range, source path
 ```
 
-```text
-http://localhost:8061/?asset=my-asset
-```
+Other flags worth knowing: `--crop x0,y0,x1,y1` (normalized), `--max-points` (default 52000), `--sample-size` (default 640, also the letterbox canvas size), `--seed`.
 
-## Agent Workflow
+## Depth source
 
-For coding agents, the smooth path is:
+Two modes. Default is `auto`, which tries Depth Anything V2 and falls back to a heuristic if the model isn't wired up.
 
-1. Read [AGENTS.md](./AGENTS.md).
-2. Build one asset with `tools/build_depth_asset.py`.
-3. Open the static viewer and inspect depth scale, scatter, point size, and tint.
-4. Copy only the needed generated files into the target project.
-5. In the target project, load `<asset>-points.json` and map `positions`, `colors`, `sizes`, `depths`, and `seeds` to renderer attributes.
-
-Use [docs/agent-quickstart.md](./docs/agent-quickstart.md) for exact commands and [docs/payload-schema.md](./docs/payload-schema.md) for the JSON contract.
-
-## Mask Modes
-
-`--mask-mode` controls which pixels become particles:
-
-- `depth`: generic default. Keeps pixels with useful depth/color contrast and skips padded black background.
-- `luma`: useful for drawings, documents, engravings, and high-contrast images.
-- `none`: exports the full crop as a rectangular field.
-- `oracle`: tuned for the bundled hue-slash sample, where red/blue/gold/dark regions carry the figure.
-
-If an output looks too rectangular, avoid `none`. If the subject is sparse, try `luma`. If the source is painterly or photographic, start with `depth`.
-
-## Depth Anything V2 Mode
-
-The default `auto` mode uses Depth Anything V2 when you provide a local checkout and checkpoint. Otherwise it falls back to deterministic heuristic depth so the repo works on a clean machine.
+**Depth Anything V2.** Not vendored. You install it yourself and point the CLI at it:
 
 ```bash
 python3 tools/build_depth_asset.py \
-  --input /path/to/image.jpg \
-  --out public/data/my-asset \
+  --input image.jpg --out public/data/my-asset \
   --mode da-v2 \
   --model-dir /path/to/Depth-Anything-V2 \
   --checkpoint /path/to/depth_anything_v2_vits.pth \
   --encoder vits
 ```
 
-You can also set:
+Or set `DEPTH_ANYTHING_V2_DIR`, `DEPTH_ANYTHING_V2_CHECKPOINT`, `DEPTH_ANYTHING_V2_ENCODER` and use `--mode auto`. Requires `torch` and `opencv-python`. Uses CUDA / MPS / CPU in that order.
 
-```bash
-export DEPTH_ANYTHING_V2_DIR=/path/to/Depth-Anything-V2
-export DEPTH_ANYTHING_V2_CHECKPOINT=/path/to/depth_anything_v2_vits.pth
-export DEPTH_ANYTHING_V2_ENCODER=vits
-```
+**Heuristic.** A deterministic mix of luminance, color, edge gradient, and a centered dome (`heuristic_depth` in the CLI). It's a fallback so the repo runs on a clean machine — not real monocular depth. Plausible-looking, geometrically wrong. Use it for placeholders and tests, not for shipping anything that claims spatial accuracy.
 
-This repo does not vendor Depth Anything V2 or model weights.
+## Mask modes
 
-## Why Not MCP?
+`--mask-mode` decides which pixels become particles. The candidate-keep weighting is in `candidate_weight()`.
 
-MCP would be useful if this needed to be a long-running service, expose remote model execution, or manage a library of assets across tools. For this lab, files plus clear commands are smoother: coding agents can run the builder, inspect outputs, and copy artifacts without extra server state.
+- `depth` — general default. Drops near-black background, weights by depth contrast and saturation.
+- `luma` — for line art, scans, manuscripts, engravings. Weights by saturation and mid-luma.
+- `none` — keep everything in the crop. Produces a rectangular sheet.
+- `oracle` — hardcoded HSV ranges (red/blue/gold/dark) tuned for the bundled `oracle.jpg` from [hue-slash](https://hue-slash.vercel.app/). Don't use this on anything else — it will throw most of your image away.
 
-## Example Use
+If the output looks like a flat rectangle and you didn't ask for `none`, the mask kept too much background. If it looks sparse, try `luma` or widen the crop.
 
-The sample oracle asset is meant to prove the workflow:
+## Using the payload elsewhere
 
-```text
-source image -> depth map -> point payload -> browser scene -> reusable art primitive
-```
+See [docs/payload-schema.md](./docs/payload-schema.md) for the JSON shape, and [docs/agent-quickstart.md](./docs/agent-quickstart.md) for a minimal Three.js loader. The integration contract lives in [AGENTS.md](./AGENTS.md).
 
-In [hue-slash](https://hue-slash.vercel.app/), the same kind of payload can drive scroll-based reveal, depth amplification, glyph morphs, parallax, and particle disassembly. In other projects it can become relief panels, haunted portraits, product depth cards, stage backdrops, or asset-heavy interactive scenes.
+`positions.z` is already centered around 0 and depth-amplified (`scale = 8.4` in `build_points`). Multiply by your own depth scale in the vertex shader. The raw `[0,1]` scalar is in `depths` — use that for tint, fog, reveal ordering, displacement, anything where you want depth as a signal rather than a coordinate.
+
+## Limits
+
+- One image in, one asset out. No batching, no video, no temporal coherence.
+- The viewer is a single orbit camera with four sliders. It's for sanity checks.
+- DA-V2 quality depends entirely on the encoder and checkpoint you bring. `vits` is fast and rough; `vitl`/`vitg` are slow and better.
+- Output is letterboxed to a square (`--sample-size`). Non-square inputs get black padding before depth runs.

@@ -1,78 +1,77 @@
-# Agent Guide
+# AGENTS.md
 
-This repo is designed to be operated by coding agents. Prefer simple file and CLI workflows over adding services.
+Operating rules for coding agents working in this repo. For project overview, read [README.md](./README.md).
 
-## Goal
+## What you produce
 
-Turn input images into reusable depth-backed assets for browser projects.
+One asset = four files under `public/data/<slug>`:
 
-The normal deliverable is a small asset pack:
-
-- `public/data/<asset>-points.json`
-- `public/data/<asset>-depth.png`
-- `public/data/<asset>-source.jpg`
-- `public/data/<asset>.meta.json`
-
-## Common Commands
-
-Build the bundled sample:
-
-```bash
-npm run build:sample
+```
+<slug>-points.json   <- the payload (ship this)
+<slug>-depth.png     <- inspection only
+<slug>-source.jpg    <- inspection only
+<slug>.meta.json     <- provenance
 ```
 
-Build a generic asset:
+Slug is lowercase, `[a-z0-9_-]` only (the viewer strips anything else).
 
-```bash
-python3 tools/build_depth_asset.py \
-  --input /absolute/path/to/image.jpg \
-  --out public/data/my-asset \
-  --crop 0,0,1,1 \
-  --max-points 42000 \
-  --mask-mode depth \
-  --mode auto
+## Decision tree
+
+**Mode:**
+- Default to `--mode auto`. It tries DA-V2 if `--model-dir` + `--checkpoint` (or the `DEPTH_ANYTHING_V2_*` env vars) are set, otherwise heuristic.
+- Use `--mode da-v2` only when the user has explicitly provided model paths and wants the build to fail if DA-V2 isn't usable.
+- Do not pretend heuristic depth is real depth. If you fall back, say so.
+
+**Mask:**
+- `depth` — start here for photos, paintings, anything with broad tonal range.
+- `luma` — line art, scans, manuscripts, monochrome drawings.
+- `none` — only when the user wants a rectangular depth sheet.
+- `oracle` — only for the bundled `oracle.jpg` or near-identical red/blue/gold ritual art. It is not a generic mode.
+
+**Crop:** start with `0,0,1,1`. Tighten only if the subject leaves obvious dead space, since `--sample-size` letterboxes to a square.
+
+**Points:** 42000–52000 is the working range. Below 20000 looks sparse; above 80000 the JSON gets unwieldy for the static viewer.
+
+## Don't
+
+- Commit model checkpoints, the Depth-Anything-V2 checkout, venvs, or `node_modules`.
+- Write assets outside `public/data/` unless the user asked for a different export path.
+- Add a server, MCP wrapper, or background process. The contract is files + a CLI.
+- Edit the bundled sample command in `package.json` to point at a different image.
+
+## Verify before handing off
+
+1. The CLI printed `wrote N points using <mode>: <prefix>`. Note N and the mode.
+2. All four files exist at the expected paths.
+3. `npm run serve` and open `/?asset=<slug>`. Confirm the subject reads as a relief, not a flat rectangle (unless `--mask-mode none` was intentional).
+4. Open `<slug>.meta.json`. Confirm `mode`, `mask_mode`, `point_count`, and that `depth_min`/`depth_max` aren't both pinned to 0 or 1.
+
+## Integration contract
+
+Other projects (e.g. hue-slash) consume `<slug>-points.json` directly. The schema is stable; treat it as a public API.
+
+```json
+{
+  "positions": [...],   // Float32, length = N*3, (x,y,z); z is centered and pre-amplified
+  "colors":    [...],   // Float32, length = N*3, RGB in [0,1]
+  "sizes":     [...],   // Float32, length = N
+  "depths":    [...],   // Float32, length = N, raw normalized depth in [0,1]
+  "seeds":     [...],   // Float32, length = N, stable random in [0,1]
+  "mode":      "da-v2" | "heuristic",
+  "maskMode":  "depth" | "luma" | "none" | "oracle"
+}
 ```
 
-Serve the viewer:
+Mapping to Three.js attributes:
 
-```bash
-npm run serve
-```
+| field       | itemSize | use                                                        |
+|-------------|----------|------------------------------------------------------------|
+| `positions` | 3        | `position`. Multiply z by your own `uDepthScale` in vertex shader. |
+| `colors`    | 3        | `color`. Already lifted slightly for browser visibility.   |
+| `sizes`     | 1        | per-point size multiplier.                                 |
+| `depths`    | 1        | raw `[0,1]` depth. Use for tint, fog, reveal order, displacement. |
+| `seeds`     | 1        | per-point stable random. Use for scatter, shimmer, delays. |
 
-Open:
+`positions.z` is already passed through `(z_raw - 0.5) * 2.0` plus small jitter, with the xy plane scaled by `8.4`. If your scene expects normalized `[-1,1]` depth coordinates, you're already there. If you want flat-then-extrude, ignore `positions.z` and drive geometry from `depths` instead.
 
-```text
-http://localhost:8061/?asset=my-asset
-```
-
-## Decision Rules
-
-- Start with `--mode auto`; use `--mode da-v2` only when the user has provided a local Depth Anything V2 checkout and checkpoint.
-- Start with `--mask-mode depth` for general images.
-- Use `--mask-mode luma` for scans, drawings, manuscripts, and high-contrast art.
-- Use `--mask-mode none` only when the target wants a full rectangular depth sheet.
-- Use `--mask-mode oracle` only for the bundled hue-slash oracle sample or closely similar red/blue/gold ritual artwork.
-- Keep generated assets in `public/data/` unless the user asks for a different export folder.
-- Do not commit model checkpoints, downloaded repositories, virtual environments, or `node_modules`.
-
-## Integration Contract
-
-Load `<asset>-points.json` in the target project and map:
-
-- `positions`: `Float32Array`, item size 3.
-- `colors`: `Float32Array`, item size 3.
-- `sizes`: `Float32Array`, item size 1.
-- `depths`: `Float32Array`, item size 1.
-- `seeds`: `Float32Array`, item size 1.
-
-Use `positions.z *= depthScale` in the vertex shader or equivalent scene logic. Use `depths` for depth tint, fog, reveal ordering, displacement intensity, or layer-based animation.
-
-## Verification Checklist
-
-Before handing off an asset:
-
-- Run the builder successfully and note the printed point count.
-- Serve the viewer and inspect the asset at `/?asset=<asset>`.
-- Check that the subject is not an accidental flat rectangle unless `--mask-mode none` was intentional.
-- Check that the JSON, depth PNG, source JPG, and meta JSON exist.
-- If integrating into another repo, copy only the generated asset files needed by that repo.
+`meta.json` is debugging context, not a runtime dependency. The renderer should need only `-points.json`.

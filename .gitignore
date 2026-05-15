@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+vendor/
 public/data/*.json
 public/data/*.png
 public/data/*.jpg

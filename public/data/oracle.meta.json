@@ -1,6 +1,6 @@
 {
   "source": "assets/source/oracle.jpg",
-  "mode": "heuristic",
+  "mode": "da-v2",
   "mask_mode": "oracle",
   "crop": [
     0.18,
@@ -13,5 +13,5 @@
   "point_count": 52000,
   "depth_min": 0.0,
   "depth_max": 1.0,
-  "note": "heuristic luminance/color/edge depth"
+  "note": "Depth Anything V2 vits on mps"
 }
